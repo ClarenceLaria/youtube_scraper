@@ -153,3 +153,8 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = YouTubeScraperApp(root)
     root.mainloop()
+
+
+
+
+# Ranks the videos, fetches the transcripts, number of views each video gets

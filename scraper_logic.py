@@ -155,6 +155,30 @@ def get_transcript(video_id: str, ytt_api: YouTubeTranscriptApi):
 
 
 # ==========================
+# VIDEO STATISTICS FETCHING
+# ==========================
+
+def get_video_statistics(api_key, video_ids):
+    youtube = build("youtube", "v3", developerKey=api_key)
+
+    stats = {}
+
+    # API allows max 50 IDs per request
+    for i in range(0, len(video_ids), 50):
+        batch = video_ids[i:i+50]
+
+        response = youtube.videos().list(
+            part="statistics",
+            id=",".join(batch)
+        ).execute()
+
+        for item in response.get("items", []):
+            stats[item["id"]] = int(item["statistics"].get("viewCount", 0))
+
+    return stats
+
+
+# ==========================
 # MAIN SCRAPER
 # ==========================
 
@@ -176,8 +200,6 @@ def scrape_channel(api_key: str, channel_url: str, save_path: str, max_videos: i
     channel_id = resolve_channel_id(api_key, identifier)
     log(f"Channel ID: {channel_id}")
 
-    log("Fetching videos...")
-
     log("Resolving channel...")
     channel_id = get_channel_id_from_url(api_key, channel_url)
     log(f"Channel ID: {channel_id}")
@@ -187,8 +209,23 @@ def scrape_channel(api_key: str, channel_url: str, save_path: str, max_videos: i
 
     print(f"Found {len(videos)} videos. Fetching transcripts...")
 
-    ytt_api = YouTubeTranscriptApi()
+    video_ids = [v["video_id"] for v in videos]
 
+    log("Fetching video statistics...")
+    stats = get_video_statistics(api_key, video_ids)
+
+    # Attach view counts
+    for v in videos:
+        v["views"] = stats.get(v["video_id"], 0)
+
+    # Rank by views (descending)
+    videos_sorted = sorted(videos, key=lambda x: x["views"], reverse=True)
+
+    for rank, video in enumerate(videos_sorted, start=1):
+        video["rank_by_views"] = rank
+
+    log("Fetching transcripts...")  
+    ytt_api = YouTubeTranscriptApi()
     data = []
 
     for idx, video in enumerate(videos, start=1):
@@ -199,9 +236,11 @@ def scrape_channel(api_key: str, channel_url: str, save_path: str, max_videos: i
             transcript_text = get_transcript(video_id, ytt_api)
 
             data.append({
+                "rank_by_views": video["rank_by_views"],
                 "title": video["title"],
                 "video_id": video_id,
                 "published_at": video["published_at"],
+                "views": video["views"],
                 "transcript": transcript_text
             })
 
